@@ -2,7 +2,6 @@ import {useEffect, useState} from 'react';
 import type {ImageSourcePropType} from 'react-native';
 import useOnyx from '@hooks/useOnyx';
 import {getCachedAttachment} from '@userActions/Attachment';
-import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
 
 type UseResolvedAttachmentSourceParams = {
