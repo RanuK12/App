@@ -62,7 +62,9 @@ const prepareRequestPayload: PrepareRequestPayload = (command, data, initiatedOf
                 }
                 // Use the actual file name if available, otherwise fall back to extracting from path/uri
                 const fileName = name || (path ? (path.split('/').pop() ?? '') : '') || '';
-                return readFileAsync(source, fileName, () => {}, undefined, type).then((file) => {
+                // Re-root launch-scoped receipts paths before reading (same as receipt branch / #98624).
+                const localUri = ReceiptStorage.resolve(source) ?? source;
+                return readFileAsync(localUri, fileName, () => {}, undefined, type).then((file) => {
                     if (!file) {
                         return;
                     }

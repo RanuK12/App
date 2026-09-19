@@ -1,5 +1,6 @@
 import {getImageCacheFileExtension} from '@libs/AttachmentUtils';
 import Log from '@libs/Log';
+import ReceiptStorage from '@libs/ReceiptStorage';
 
 import CONST from '@src/CONST';
 import ONYXKEYS from '@src/ONYXKEYS';
@@ -15,7 +16,9 @@ import type {CacheAttachmentProps, GetCachedAttachmentProps, RemoveCachedAttachm
 const ATTACHMENT_DIR = `${RNFS.CachesDirectoryPath}/attachments`;
 
 async function cacheAttachment({attachmentID, uri, mimeType}: CacheAttachmentProps) {
-    const isLocalFile = uri.startsWith('file://');
+    // Receipts-folder paths are launch-scoped; re-root before any filesystem touch.
+    const resolvedUri = ReceiptStorage.resolve(uri) ?? uri;
+    const isLocalFile = resolvedUri.startsWith('file://');
     const fileExtension = getImageCacheFileExtension(mimeType ?? '');
 
     // For local file uploads and the file type is supported for caching, then copy instead of re-downloading the file
@@ -26,7 +29,7 @@ async function cacheAttachment({attachmentID, uri, mimeType}: CacheAttachmentPro
         try {
             // The OS can purge Caches wholesale, so the directory may need recreating
             await RNFS.mkdir(ATTACHMENT_DIR);
-            await RNFS.copyFile(uri, destPath);
+            await RNFS.copyFile(resolvedUri, destPath);
             await Onyx.set(`${ONYXKEYS.COLLECTION.ATTACHMENT}${attachmentID}`, {
                 attachmentID,
                 source: destPath,
@@ -40,7 +43,7 @@ async function cacheAttachment({attachmentID, uri, mimeType}: CacheAttachmentPro
 
     try {
         // HEAD first to validate size and type before downloading
-        const headResponse = await fetch(uri, {method: 'HEAD'});
+        const headResponse = await fetch(resolvedUri, {method: 'HEAD'});
         const contentType = headResponse.headers.get('content-type') ?? '';
         const contentSize = Number(headResponse.headers.get('content-length') ?? 0);
 
@@ -62,12 +65,12 @@ async function cacheAttachment({attachmentID, uri, mimeType}: CacheAttachmentPro
         const filePath = `${ATTACHMENT_DIR}/${fileName}`;
         // The OS can purge Caches wholesale, so the directory may need recreating
         await RNFS.mkdir(ATTACHMENT_DIR);
-        await RNFetchBlob.config({path: filePath}).fetch('GET', uri);
+        await RNFetchBlob.config({path: filePath}).fetch('GET', resolvedUri);
 
         await Onyx.set(`${ONYXKEYS.COLLECTION.ATTACHMENT}${attachmentID}`, {
             attachmentID,
             source: filePath,
-            remoteSource: uri,
+            remoteSource: resolvedUri,
         });
     } catch (error) {
         Log.warn('[AttachmentCache] Failed to cache attachment', {error});
@@ -75,11 +78,13 @@ async function cacheAttachment({attachmentID, uri, mimeType}: CacheAttachmentPro
 }
 
 async function getCachedAttachment({attachmentID, attachment, currentSource}: GetCachedAttachmentProps) {
-    const isStale = attachment ? attachment?.remoteSource && attachment.remoteSource !== currentSource : false;
+    // currentSource may be a persisted receipts path from a prior launch; localSource under Caches must not be resolved.
+    const resolvedCurrentSource = ReceiptStorage.resolve(currentSource) ?? currentSource;
+    const isStale = attachment ? attachment?.remoteSource && attachment.remoteSource !== resolvedCurrentSource : false;
     if (isStale) {
         // Only re-cache the [markdown-attachment] if it is outdated (updated)
-        cacheAttachment({attachmentID, uri: currentSource});
-        return currentSource;
+        cacheAttachment({attachmentID, uri: resolvedCurrentSource});
+        return resolvedCurrentSource;
     }
 
     const localSource = attachment?.source;
@@ -94,10 +99,10 @@ async function getCachedAttachment({attachmentID, attachment, currentSource}: Ge
             // reaches the image renderer.
             return localSource.startsWith('file://') ? localSource : `file://${localSource}`;
         }
-        cacheAttachment({attachmentID, uri: currentSource});
+        cacheAttachment({attachmentID, uri: resolvedCurrentSource});
     }
 
-    return currentSource;
+    return resolvedCurrentSource;
 }
 
 async function removeCachedAttachment({attachmentID, localSource}: RemoveCachedAttachmentProps): Promise<void> {
