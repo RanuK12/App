@@ -1,17 +1,14 @@
 import {checkFileExistsWithReason} from '@libs/fileDownload/checkFileExists';
 import {readFileAsync} from '@libs/fileDownload/FileUtils';
+import Log from '@libs/Log';
 import ReceiptStorage from '@libs/ReceiptStorage';
-import {logAttachmentDropped, logReceiptDropped} from '@libs/telemetry/ReceiptObservability';
+import {logReceiptDropped} from '@libs/telemetry/ReceiptObservability';
 import validateFormDataParameter from '@libs/validateFormDataParameter';
 
 import type {Receipt} from '@src/types/onyx/Transaction';
 
 import type PrepareRequestPayload from './types';
 
-/**
- * Prepares the request payload (body) for a given command and data.
- * This function is specifically designed for native platforms (IOS and Android) to handle the regeneration of blob files. It ensures that files, such as receipts, are properly read and appended to the FormData object before the request is sent.
- */
 const prepareRequestPayload: PrepareRequestPayload = (command, data, initiatedOffline) => {
     const formData = new FormData();
     let promiseChain = Promise.resolve();
@@ -28,7 +25,6 @@ const prepareRequestPayload: PrepareRequestPayload = (command, data, initiatedOf
                 const {source, name, type, receiptTraceId} = value as Omit<File, 'source'> & Pick<Receipt, 'receiptTraceId' | 'source'>;
 
                 if (source) {
-                    // A bundled placeholder image (distance, per diem) is a require() asset id, so no file exists on disk.
                     if (typeof source === 'number') {
                         return Promise.resolve();
                     }
@@ -60,21 +56,19 @@ const prepareRequestPayload: PrepareRequestPayload = (command, data, initiatedOf
 
                     return Promise.resolve();
                 }
-                // Use the actual file name if available, otherwise fall back to extracting from path/uri
                 const fileName = name || (path ? (path.split('/').pop() ?? '') : '') || '';
-                // Mirror the receipt branch: re-root launch-scoped receipts paths before reading.
                 const localUri = ReceiptStorage.resolve(source) ?? source;
                 return readFileAsync(
                     localUri,
                     fileName,
                     () => {
-                        logAttachmentDropped({command, source, fileName});
+                        Log.alert('[Attachment] dropped', {event: 'dropped', command, source, fileName});
                     },
                     undefined,
                     type,
                 ).then((file) => {
                     if (!file) {
-                        logAttachmentDropped({command, source, fileName});
+                        Log.alert('[Attachment] dropped', {event: 'dropped', command, source, fileName});
                         return;
                     }
 
