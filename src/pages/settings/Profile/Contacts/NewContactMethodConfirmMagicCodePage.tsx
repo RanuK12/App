@@ -27,7 +27,7 @@ function NewContactMethodConfirmMagicCodePage({route}: NewContactMethodConfirmMa
         if (!pendingContactAction?.isVerifiedValidateActionCode) {
             return;
         }
-        Navigation.navigate(ROUTES.SETTINGS_NEW_CONTACT_METHOD.getRoute(navigateBackTo));
+        Navigation.navigate(ROUTES.SETTINGS_CONTACT_METHODS.getRoute(navigateBackTo));
     }, [navigateBackTo, pendingContactAction?.isVerifiedValidateActionCode]);
 
     return (
